@@ -1,0 +1,54 @@
+// Umbra — Dark Web Threat Intelligence (Postgres/Prisma persistence layer)
+//
+// The intelligence itself is LIVE (NVD, ransomware.live, HIBP, crt.sh, etc. —
+// queried fresh on every scan/search). Postgres persists the two things a
+// real product needs to remember between requests:
+//   1. which domains an org is watching  -> WatchlistDomain
+//   2. the history of scans run per domain -> ScanResult
+// A scan's full aggregated payload is stored as JSON in ScanResult.data so the
+// frontend renders the exact same report shape whether it came from a fresh
+// live scan or from the database.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String            @id @default(cuid())
+  name         String
+  email        String            @unique
+  passwordHash String
+  createdAt    DateTime          @default(now())
+  watchlist    WatchlistDomain[]
+}
+
+model WatchlistDomain {
+  id        String       @id @default(cuid())
+  domain    String
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+  scans     ScanResult[]
+
+  // A domain can be watched by many users, but only once per user.
+  @@unique([userId, domain])
+}
+
+model ScanResult {
+  id          String           @id @default(cuid())
+  domain      String
+  watchlistId String?
+  watchlist   WatchlistDomain? @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  riskScore   Int
+  riskBand    String
+  data        Json
+  scannedAt   DateTime         @default(now())
+
+  @@index([domain, scannedAt])
+  @@index([watchlistId])
+}
